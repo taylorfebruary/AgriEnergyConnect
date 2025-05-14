@@ -1,46 +1,69 @@
 ﻿using AgriEnergyConnect.Data;
 using AgriEnergyConnect.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Authorize(Roles = "Employee")]
-public class EmployeeController : Controller
+namespace AgriEnergyConnect.Controllers
 {
-    private readonly ApplicationDbContext _context;
-
-    public EmployeeController(ApplicationDbContext context)
+    [Authorize(Roles = "Employee")]
+    public class EmployeeController : Controller
     {
-        _context = context;
-    }
+        private readonly ApplicationDbContext _context;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-    public async Task<IActionResult> AllProducts(string category, DateTime? startDate, DateTime? endDate)
-    {
-        var products = _context.Products.Include(p => p.Farmer).AsQueryable();
-
-        if (!string.IsNullOrEmpty(category))
-            products = products.Where(p => p.Category == category);
-
-        if (startDate.HasValue)
-            products = products.Where(p => p.ProductionDate >= startDate.Value);
-
-        if (endDate.HasValue)
-            products = products.Where(p => p.ProductionDate <= endDate.Value);
-
-        return View(await products.ToListAsync());
-    }
-
-    public IActionResult AddFarmer() => View();
-
-    [HttpPost]
-    public async Task<IActionResult> AddFarmer(Farmer farmer)
-    {
-        if (ModelState.IsValid)
+        public EmployeeController(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
         {
-            _context.Farmers.Add(farmer);
-            await _context.SaveChangesAsync();
-            return RedirectToAction("AllProducts");
+            _context = context;
+            _userManager = userManager;
         }
-        return View(farmer);
+
+        public async Task<IActionResult> AllProducts(string category, DateTime? startDate, DateTime? endDate)
+        {
+            var products = _context.Products.Include(p => p.Farmer).AsQueryable();
+
+            if (!string.IsNullOrEmpty(category))
+                products = products.Where(p => p.Category.Contains(category));
+
+            if (startDate.HasValue)
+                products = products.Where(p => p.ProductionDate >= startDate.Value);
+
+            if (endDate.HasValue)
+                products = products.Where(p => p.ProductionDate <= endDate.Value);
+
+            return View(await products.ToListAsync());
+        }
+
+        public IActionResult AddFarmer()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> AddFarmer(Register model)
+        {
+            if (ModelState.IsValid)
+            {
+                var farmer = new ApplicationUser
+                {
+                    UserName = model.Email,
+                    Email = model.Email,
+                    Role = "Farmer"
+                };
+
+                var result = await _userManager.CreateAsync(farmer, model.Password);
+                if (result.Succeeded)
+                {
+                    await _userManager.AddToRoleAsync(farmer, "Farmer");
+                    return RedirectToAction("AllProducts");
+                }
+
+                foreach (var error in result.Errors)
+                    ModelState.AddModelError("", error.Description);
+            }
+
+            return View(model);
+        }
     }
 }
